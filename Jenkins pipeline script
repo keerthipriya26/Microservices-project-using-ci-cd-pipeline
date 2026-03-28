@@ -1,0 +1,54 @@
+pipeline {
+     agent {  
+         label "mynode" 
+     }
+      environment {
+          DOCKERHUB_CREDS = credentials('Dockerhub') 
+    } 
+    stages {
+         stage('Code') { 
+            steps { 
+                git 'https://github.com/keerthipriya26/python-code-library-app.git'
+            } 
+        }
+         stage('Build Images') { 
+            steps { 
+                sh "docker build -t dbimage database" 
+                sh "docker build -t authimage auth" 
+                sh "docker build -t bookimage book" 
+                sh "docker build -t borrowimage borrow" 
+                sh "docker build -t frontendimage ." 
+            } 
+        }
+         stage('Tag Images') { 
+            steps { 
+                sh "docker tag dbimage kee26/myproject:db" 
+                sh "docker tag authimage kee26/myproject:auth" 
+                sh "docker tag bookimage kee26/myproject:book" 
+                sh "docker tag borrowimage kee26/myproject:borrow" 
+                sh "docker tag frontendimage kee26/myproject:frontend" 
+            } 
+        }
+         stage ('Docker Login') { 
+            steps { 
+                sh "echo ${DOCKERHUB_CREDS_PSW} | docker login -u ${DOCKERHUB_CREDS_USR} --password-stdin" 
+            }
+         }
+          stage ('Push Images') { 
+            steps { 
+                sh "docker push kee26/myproject:db" 
+                sh "docker push kee26/myproject:auth" 
+                sh "docker push kee26/myproject:book" 
+                sh "docker push kee26/myproject:borrow" 
+                sh "docker push kee26/myproject:frontend"
+            } 
+        }
+         stage('Deploy') { 
+             steps { 
+                 sh "docker stack deploy application -c compose.yml" 
+                 
+             } 
+             
+         }
+    }
+}
