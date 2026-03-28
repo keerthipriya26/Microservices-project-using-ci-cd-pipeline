@@ -1,0 +1,184 @@
+
+Create 3 instances with c7i-flex large and 28gb ebs volume
+1.	Jenkins
+2.	Manager
+3.	Worker node
+Connect all and rename the server
+sudo hostname Jenkins
+exit
+sudo -i
+sudo hostname Manager
+sudo hostname WN
+
+
+Install on Jenkins server:
+
+#STEP-1: INSTALLING GIT 
+yum install git -y
+
+#STEP-2: GETTING THE REPO (jenkins.io --> download -- > redhat)
+sudo wget -O /etc/yum.repos.d/jenkins.repo https://pkg.jenkins.io/redhat-stable/jenkins.repo
+sudo rpm --import https://pkg.jenkins.io/redhat-stable/jenkins.io-2023.key
+
+#STEP-3: DOWNLOAD JAVA11 AND JENKINS
+yum install java-17-amazon-corretto -y
+yum install jenkins -y
+
+#STEP-4: RESTARTING JENKINS (when we download service it will on stopped state)
+systemctl start jenkins.service
+systemctl status jenkins.service
+
+yum install docker -y && systemctl start docker
+sudo chmod 777 /var/run/docker.sock
+sudo usermod -aG docker jenkins
+sudo systemctl restart jenkins
+
+
+Install on Master and worker node server
+
+yum install git -y
+yum install java-17-amazon-corretto -y
+yum install docker -y && systemctl start docker
+sudo chmod 777 /var/run/docker.sock
+
+Connect Jenkins 
+Using Jenkins public ip:8080
+Create account and login
+
+Install plugins
+1.	Stage view
+2.	Sonarqube
+3.	Docker pipeline
+
+Create container using sonarqube image on manager server
+docker run -d --name sonarqube -p 9000:9000 sonarqube:community
+
+Go to manage Jenkins  nodes mynode create
+Mynode
+Exe 2
+/home/ec2-user/Jenkins
+Manager private ip
+Add credentials with private key text copy and paste here
+ 
+
+ 
+Save node should be online
+
+Add docker credentials managecredentialsadduser name passgive dockerhub login details there
+Kee26
+Keeer@143
+ 
+In docker hub we have to create one repo name as “myproject”
+[root@Manager myproject]# cat compose.yml
+---
+services:
+  db:
+    image: kee26/myproject:db
+    ports:
+      - "3306:3306"
+    deploy:
+      replicas: 1
+  auth_service:
+    image: kee26/myproject:auth
+    ports:
+      - "5001:5001"
+    deploy:
+      replicas: 1
+    depends_on:
+      - db
+  book_service:
+    image: kee26/myproject:book
+    ports:
+      - "5002:5002"
+    deploy:
+      replicas: 1
+    depends_on:
+      - db
+  borrow_service:
+    image: kee26/myproject:borrow
+    ports:
+      - "5003:5003"
+    deploy:
+      replicas: 1
+    depends_on:
+      - db
+  app_service:
+    image: kee26/myproject:frontend
+    ports:
+      - "5000:5000"
+    deploy:
+      replicas: 1
+    depends_on:
+      - auth_service
+      - book_service
+      - borrow_service
+
+After editing the yml file we need to install the docker compose
+# create plugin directory
+mkdir -p ~/.docker/cli-plugins/
+
+# download latest docker compose v2
+curl -SL https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64 \
+-o ~/.docker/cli-plugins/docker-compose
+
+# give execute permission
+chmod +x ~/.docker/cli-plugins/docker-compose
+
+# verify
+docker compose version
+final pipeline:
+
+pipeline {
+     agent {  
+         label "mynode" 
+     }
+      environment {
+          DOCKERHUB_CREDS = credentials('Dockerhub') 
+    } 
+    stages {
+         stage('Code') { 
+            steps { 
+                git 'https://github.com/keerthipriya26/python-code-library-app.git'
+            } 
+        }
+         stage('Build Images') { 
+            steps { 
+                sh "docker build -t dbimage database" 
+                sh "docker build -t authimage auth" 
+                sh "docker build -t bookimage book" 
+                sh "docker build -t borrowimage borrow" 
+                sh "docker build -t frontendimage ." 
+            } 
+        }
+         stage('Tag Images') { 
+            steps { 
+                sh "docker tag dbimage kee26/myproject:db" 
+                sh "docker tag authimage kee26/myproject:auth" 
+                sh "docker tag bookimage kee26/myproject:book" 
+                sh "docker tag borrowimage kee26/myproject:borrow" 
+                sh "docker tag frontendimage kee26/myproject:frontend" 
+            } 
+        }
+         stage ('Docker Login') { 
+            steps { 
+                sh "echo ${DOCKERHUB_CREDS_PSW} | docker login -u ${DOCKERHUB_CREDS_USR} --password-stdin" 
+            }
+         }
+          stage ('Push Images') { 
+            steps { 
+                sh "docker push kee26/myproject:db" 
+                sh "docker push kee26/myproject:auth" 
+                sh "docker push kee26/myproject:book" 
+                sh "docker push kee26/myproject:borrow" 
+                sh "docker push kee26/myproject:frontend"
+            } 
+        }
+         stage('Deploy') { 
+             steps { 
+                 sh "docker stack deploy application -c compose.yml" 
+                 
+             } 
+             
+         }
+    }
+}
