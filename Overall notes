@@ -1,8 +1,12 @@
+DOCKER PROJECT USING CICD JENKINS (PYTHON APP)
 
-Create 3 instances with c7i-flex large and 28gb ebs volume
+ 
+SERVERS CREATION:
+Create 4 instances with c7i-flex large and 28gb ebs volume
 1.	Jenkins
 2.	Manager
-3.	Worker node
+3.	Worker node 1
+4. worker node 2
 Connect all and rename the server
 sudo hostname Jenkins
 exit
@@ -40,11 +44,12 @@ yum install git -y
 yum install java-17-amazon-corretto -y
 yum install docker -y && systemctl start docker
 sudo chmod 777 /var/run/docker.sock
+chmod 777 /var/run/docker.sock
+
 
 Connect Jenkins 
 Using Jenkins public ip:8080
 Create account and login
-
 Install plugins
 1.	Stage view
 2.	Sonarqube
@@ -53,6 +58,7 @@ Install plugins
 Create container using sonarqube image on manager server
 docker run -d --name sonarqube -p 9000:9000 sonarqube:community
 
+Node creation on Jenkins:
 Go to manage Jenkins  nodes mynode create
 Mynode
 Exe 2
@@ -65,11 +71,12 @@ Add credentials with private key text copy and paste here
 Save node should be online
 
 Add docker credentials managecredentialsadduser name passgive dockerhub login details there
-Kee26
-Keeer@143
+
  
 In docker hub we have to create one repo name as “myproject”
-[root@Manager myproject]# cat compose.yml
+
+
+[root@master mydeployment]# cat compose.yml
 ---
 services:
   db:
@@ -113,6 +120,9 @@ services:
       - book_service
       - borrow_service
 
+ 
+
+
 After editing the yml file we need to install the docker compose
 # create plugin directory
 mkdir -p ~/.docker/cli-plugins/
@@ -126,15 +136,19 @@ chmod +x ~/.docker/cli-plugins/docker-compose
 
 # verify
 docker compose version
+
+===================================================================
 final pipeline:
 
 pipeline {
      agent {  
-         label "mynode" 
+         label "prod" 
      }
-      environment {
-          DOCKERHUB_CREDS = credentials('Dockerhub') 
-    } 
+     environment {
+         DOCKERHUB_CREDS = credentials('Dockerhub') 
+         
+     } 
+     
     stages {
          stage('Code') { 
             steps { 
@@ -149,8 +163,17 @@ pipeline {
                 sh "docker build -t borrowimage borrow" 
                 sh "docker build -t frontendimage ." 
             } 
+         }
+         stage ("Scan") {
+            steps {
+                sh 'trivy image dbimage'
+                sh 'trivy image authimage'
+                sh 'trivy image bookimage'
+                sh 'trivy image borrowimage'
+                sh 'trivy image frontendimage'
+            }
         }
-         stage('Tag Images') { 
+        stage('Tag Images') { 
             steps { 
                 sh "docker tag dbimage kee26/myproject:db" 
                 sh "docker tag authimage kee26/myproject:auth" 
@@ -160,25 +183,29 @@ pipeline {
             } 
         }
          stage ('Docker Login') { 
-            steps { 
-                sh "echo ${DOCKERHUB_CREDS_PSW} | docker login -u ${DOCKERHUB_CREDS_USR} --password-stdin" 
+            steps {
+                script {
+                    withDockerRegistry(credentialsId: 'Dockerhub') {
+                    sh "docker push kee26/myproject:db" 
+                    sh "docker push kee26/myproject:auth" 
+                    sh "docker push kee26/myproject:book" 
+                    sh "docker push kee26/myproject:borrow" 
+                    sh "docker push kee26/myproject:frontend"                   
+                    }
+                }
             }
          }
-          stage ('Push Images') { 
-            steps { 
-                sh "docker push kee26/myproject:db" 
-                sh "docker push kee26/myproject:auth" 
-                sh "docker push kee26/myproject:book" 
-                sh "docker push kee26/myproject:borrow" 
-                sh "docker push kee26/myproject:frontend"
-            } 
-        }
          stage('Deploy') { 
              steps { 
                  sh "docker stack deploy application -c compose.yml" 
                  
              } 
-             
          }
+         
     }
 }
+
+===============================================================
+
+
+
