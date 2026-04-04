@@ -1,10 +1,12 @@
 pipeline {
      agent {  
-         label "mynode" 
+         label "prod" 
      }
-      environment {
-          DOCKERHUB_CREDS = credentials('Dockerhub') 
-    } 
+     environment {
+         DOCKERHUB_CREDS = credentials('Dockerhub') 
+         
+     } 
+     
     stages {
          stage('Code') { 
             steps { 
@@ -19,8 +21,17 @@ pipeline {
                 sh "docker build -t borrowimage borrow" 
                 sh "docker build -t frontendimage ." 
             } 
+         }
+         stage ("Scan") {
+            steps {
+                sh 'trivy image dbimage'
+                sh 'trivy image authimage'
+                sh 'trivy image bookimage'
+                sh 'trivy image borrowimage'
+                sh 'trivy image frontendimage'
+            }
         }
-         stage('Tag Images') { 
+        stage('Tag Images') { 
             steps { 
                 sh "docker tag dbimage kee26/myproject:db" 
                 sh "docker tag authimage kee26/myproject:auth" 
@@ -30,25 +41,24 @@ pipeline {
             } 
         }
          stage ('Docker Login') { 
-            steps { 
-                sh "echo ${DOCKERHUB_CREDS_PSW} | docker login -u ${DOCKERHUB_CREDS_USR} --password-stdin" 
+            steps {
+                script {
+                    withDockerRegistry(credentialsId: 'Dockerhub') {
+                    sh "docker push kee26/myproject:db" 
+                    sh "docker push kee26/myproject:auth" 
+                    sh "docker push kee26/myproject:book" 
+                    sh "docker push kee26/myproject:borrow" 
+                    sh "docker push kee26/myproject:frontend"                   
+                    }
+                }
             }
          }
-          stage ('Push Images') { 
-            steps { 
-                sh "docker push kee26/myproject:db" 
-                sh "docker push kee26/myproject:auth" 
-                sh "docker push kee26/myproject:book" 
-                sh "docker push kee26/myproject:borrow" 
-                sh "docker push kee26/myproject:frontend"
-            } 
-        }
          stage('Deploy') { 
              steps { 
                  sh "docker stack deploy application -c compose.yml" 
                  
              } 
-             
          }
+         
     }
 }
